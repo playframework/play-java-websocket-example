@@ -2,6 +2,7 @@ package backend;
 
 import akka.actor.ActorSystem;
 import akka.cluster.Cluster;
+import backend.journal.SharedJournalSetter;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
@@ -26,6 +27,8 @@ public class MainClusterManager {
         if (Cluster.get(system).getSelfRoles().stream().anyMatch(r -> r.startsWith("backend"))) {
             system.actorOf(StockManager.props(), "stockManager");
         }
+
+        system.actorOf(SharedJournalSetter.props(), "shared-journal-setter");
 
         commandLoop(system);
     }

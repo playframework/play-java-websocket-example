@@ -14,7 +14,9 @@ libraryDependencies ++= Seq(
   "org.webjars" % "flot" % "0.8.0",
   "com.typesafe.akka" %% "akka-testkit" % akka % "test",
   "com.typesafe.akka" %% "akka-cluster" % akka,
-  "com.typesafe.akka" %% "akka-contrib" % akka
+  "com.typesafe.akka" %% "akka-contrib" % akka,
+  "com.typesafe.akka" %% "akka-persistence-experimental" % akka exclude("org.iq80.leveldb","leveldb"),
+  "org.iq80.leveldb"  %  "leveldb" % "0.7"
 )
 
 javacOptions ++= Seq("-source", "1.8", "-target", "1.8", "-Xlint")
@@ -27,4 +29,6 @@ initialize := {
     sys.error("Java 8 is required for this project.")
 }
 
-addCommandAlias("rb", "runMain backend.MainClusterManager 2551 backend -Dakka.remote.netty.tcp.port=2551 -Dakka.cluster.roles.0=game-engine")
+addCommandAlias("rb", "runMain backend.MainClusterManager 2551 backend -Dakka.remote.netty.tcp.port=2551 -Dakka.cluster.roles.0=backend")
+
+addCommandAlias("sj", "runMain backend.journal.SharedJournalApp 2552 shared-journal -Dakka.remote.netty.tcp.port=2552 -Dakka.cluster.roles.0=journal")
