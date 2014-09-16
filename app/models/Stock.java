@@ -1,16 +1,20 @@
 package models;
 
+import akka.routing.ConsistentHashingRouter.ConsistentHashable;
+
+import java.io.Serializable;
 import java.util.Deque;
 import java.util.Optional;
+import akka.routing.ConsistentHashingRouter.ConsistentHashable;
 
-public class Stock {
+public class Stock implements Serializable {
     public static final class Latest {
         public Latest() {}
     }
 
     public static final Latest latest = new Latest();
 
-    public static final class Update {
+    public static final class Update implements Serializable {
         public final String symbol;
         public final Double price;
 
@@ -20,7 +24,7 @@ public class Stock {
         }
     }
 
-    public static final class History {
+    public static final class History implements Serializable {
         public final String symbol;
         public final Deque<Double> history;
 
@@ -30,19 +34,31 @@ public class Stock {
         }
     }
 
-    public static final class Watch {
+    public static final class Watch implements ConsistentHashable, Serializable {
         public final String symbol;
 
         public Watch(String symbol) {
             this.symbol = symbol;
         }
+
+
+        @Override
+        public Object consistentHashKey() {
+            return symbol;
+        }
     }
 
-    public static final class Unwatch {
+    public static final class Unwatch implements ConsistentHashable, Serializable  {
         public final Optional<String> symbol;
 
         public Unwatch(Optional<String> symbol) {
             this.symbol = symbol;
+        }
+
+
+        @Override
+        public Object consistentHashKey() {
+            return symbol;
         }
     }
 }

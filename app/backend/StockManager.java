@@ -3,6 +3,8 @@ package backend;
 import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
 import akka.actor.Props;
+import akka.event.Logging;
+import akka.event.LoggingAdapter;
 import akka.japi.pf.ReceiveBuilder;
 import java.util.Collections;
 import java.util.Optional;
@@ -11,6 +13,8 @@ import models.Stock;
 
 public class StockManager extends AbstractActor {
 
+    LoggingAdapter log = Logging.getLogger(getContext().system(), this);
+
     public static Props props() {
         return Props.create(StockManager.class, StockManager::new);
     }
@@ -18,7 +22,10 @@ public class StockManager extends AbstractActor {
     public StockManager() {
         receive(ReceiveBuilder
             .match(Stock.Watch.class, watch -> {
+
                 String symbol = watch.symbol;
+                log.info("StockManager Stock Watch of symbol:" + symbol);
+
                 // get or create the StockActor for the symbol and forward this message
                 Optional.ofNullable(getContext().getChild(symbol)).orElseGet(
                         () -> context().actorOf(Props.create(StockActor.class, symbol), symbol)

@@ -10,7 +10,7 @@ public class ActorManagerExtensionImpl implements Extension {
     private final ActorRef stockManagerClient;
 
     public ActorManagerExtensionImpl(ExtendedActorSystem system) {
-        stockManagerClient = system.actorOf(StockManagerClient.props());
+        stockManagerClient = system.actorOf(StockManagerClient.props(), "stockManagerClient");
     }
 
     public ActorRef getStockManagerClient() {
