@@ -1,4 +1,4 @@
-package actors;
+package backend;
 
 import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
@@ -6,19 +6,16 @@ import akka.actor.Props;
 import akka.japi.pf.ReceiveBuilder;
 import java.util.Collections;
 import java.util.Optional;
-import play.libs.Akka;
 
-public class StocksActor extends AbstractActor {
+import models.Stock;
 
-    private static class LazyStocksActor {
-        public static final ActorRef ref = Akka.system().actorOf(Props.create(StocksActor.class));
+public class StockManager extends AbstractActor {
+
+    public static Props props() {
+        return Props.create(StockManager.class, StockManager::new);
     }
 
-    public static ActorRef stocksActor() {
-        return LazyStocksActor.ref;
-    }
-
-    public StocksActor() {
+    public StockManager() {
         receive(ReceiveBuilder
             .match(Stock.Watch.class, watch -> {
                 String symbol = watch.symbol;

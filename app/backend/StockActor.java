@@ -1,4 +1,4 @@
-package actors;
+package backend;
 
 import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
@@ -8,6 +8,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.Optional;
+
+import models.Stock;
 import scala.concurrent.duration.Duration;
 import utils.FakeStockQuote;
 import utils.StockQuote;

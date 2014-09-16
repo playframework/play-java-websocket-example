@@ -6,8 +6,9 @@ import akka.actor.ActorRef;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import java.util.Optional;
+
+import models.Stock;
 import play.libs.Akka;
-import play.libs.F;
 import play.mvc.Controller;
 import play.mvc.Result;
 import play.mvc.WebSocket;
@@ -23,12 +24,14 @@ public class Application extends Controller {
     }
 
     public static WebSocket<JsonNode> ws() {
+        ActorRef stockManagerClient = ActorManagerExtension.ActorManagerExtensionProvider.get(Akka.system()).getStockManagerClient();
+
         return WebSocket.whenReady((in, out) -> {
             // create a new UserActor and give it the default stocks to watch
             final ActorRef userActor = Akka.system().actorOf(Props.create(UserActor.class, out));
             List<String> defaultStocks = Play.application().configuration().getStringList("default.stocks");
             for (String stockSymbol : defaultStocks) {
-                StocksActor.stocksActor().tell(new Stock.Watch(stockSymbol), userActor);
+                stockManagerClient.tell(new Stock.Watch(stockSymbol), userActor);
             }
 
             // send all WebSocket message to the UserActor
@@ -36,12 +39,12 @@ public class Application extends Controller {
                 // parse the JSON into Stock.Watch
                 Stock.Watch watchStock = new Stock.Watch(jsonNode.get("symbol").textValue());
                 // send the watchStock message to the StocksActor
-                StocksActor.stocksActor().tell(watchStock, userActor);
+                stockManagerClient.tell(watchStock, userActor);
             });
 
             // on close, tell the userActor to shutdown
             in.onClose(() -> {
-                StocksActor.stocksActor().tell(new Stock.Unwatch(Optional.empty()), userActor);
+                stockManagerClient.tell(new Stock.Unwatch(Optional.empty()), userActor);
                 Akka.system().stop(userActor);
             });
         });

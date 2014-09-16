@@ -5,6 +5,7 @@ import akka.japi.pf.ReceiveBuilder;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import models.Stock;
 import play.libs.Json;
 import play.mvc.WebSocket;
 
