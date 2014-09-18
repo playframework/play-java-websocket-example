@@ -14,15 +14,7 @@ public class MainClusterManager {
     public static void main(String... args) throws IOException {
 
         //improper / lazy checking - export port and cluster - or use defaults if not available
-        ActorSystem system = null;
-        if (args.length < 2) {
-            system = startSystem("0", "backend");
-        } else {
-            String port = args[0];
-            String role = args[1];
-            system = startSystem(port, role);
-        }
-
+        ActorSystem system = startSystem(args);
         if (Cluster.get(system).getSelfRoles().stream().anyMatch(r -> r.startsWith("backend"))) {
             system.actorOf(StockManager.props(), "stockManager");
         }
@@ -30,13 +22,19 @@ public class MainClusterManager {
         commandLoop(system);
     }
 
-    public static ActorSystem startSystem(String port, String role) {
+    private static ActorSystem startSystem(String... cmdArgs) {
+        if (cmdArgs.length < 1) {
+            return startSystem("backend");
+        } else {
+            String role = cmdArgs[0];
+            return startSystem(role);
+        }
 
-        int portNr = Integer.parseInt(port);
+    }
 
+    public static ActorSystem startSystem(String role) {
         // Override the port number configuration
-        Config config = ConfigFactory.parseString("akka.remote.netty.tcp.port=" + portNr).
-                withFallback(ConfigFactory.parseString("akka.cluster.roles=[" + role + "]")).
+        Config config = ConfigFactory.parseString("akka.cluster.roles=[" + role + "]").
                 withFallback(ConfigFactory.parseString("akka.loglevel=INFO")).
                 withFallback(ConfigFactory.load());
 

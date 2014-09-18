@@ -4,6 +4,8 @@ import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
 import akka.actor.Cancellable;
 import akka.japi.pf.ReceiveBuilder;
+
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.Deque;
 import java.util.HashSet;
@@ -20,7 +22,7 @@ import utils.StockQuote;
  */
 public class StockActor extends AbstractActor {
 
-    final HashSet<ActorRef> watchers = new HashSet<ActorRef>();
+    final Set<ActorRef> watchers = new HashSet<>();
 
     final Deque<Double> stockHistory = FakeStockQuote.history(50);
 
