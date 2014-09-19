@@ -97,6 +97,9 @@ public class StockActor extends AbstractPersistentActor {
                         watchers.forEach(watcher -> watcher.tell(new Stock.Update(symbol, newPrice), self()));
 //                    });
                 })
+                .match(Events.AddWatcherAfterRecover.class, evt -> {
+                   watchers.add(evt.watcher()); //only used to add watchers after recover
+                })
                 .match(Stock.Watch.class, watch -> {
                     persist(new Events.WatcherAdded(sender()), evt -> {
                         addWatcher(evt);
@@ -141,13 +144,15 @@ public class StockActor extends AbstractPersistentActor {
 
     private void addWatcherIfAlive(ActorRef w) {
         //using actor identity to make sure the watcher is still alive after recovery
-        //TODO: we could also extract this out into a separate actor
         Patterns.ask(w, new Identify(w.path().name()), 100)
            .map(new Mapper<Object, Void>() {
                @Override
                public Void apply(Object result) {
-                  watchers.add(w);
-                  return null;
+                   ActorIdentity ai = (ActorIdentity) result;
+                   if (ai.getRef() != null) {
+                       self().tell(new Events.AddWatcherAfterRecover(w), ActorRef.noSender());
+                   }
+                   return null;
                }
            }, context().dispatcher())
           .recover(new Recover<Void>() {
@@ -205,6 +210,16 @@ public class StockActor extends AbstractPersistentActor {
             public Deque<Double> history() { return history; }
 
             public Set<ActorRef> watchers() { return watchers; }
+        }
+
+
+        public static class AddWatcherAfterRecover {
+            private ActorRef watcher;
+            public AddWatcherAfterRecover(ActorRef w)  {
+                this.watcher = w;
+            }
+
+            public ActorRef watcher() { return watcher; }
         }
 
         public static class Snap {}
