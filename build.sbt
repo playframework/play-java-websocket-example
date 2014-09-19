@@ -29,6 +29,6 @@ initialize := {
     sys.error("Java 8 is required for this project.")
 }
 
-addCommandAlias("rb", "runMain backend.MainClusterManager 2551 backend -Dakka.remote.netty.tcp.port=2551 -Dakka.cluster.roles.0=backend")
+addCommandAlias("rb", "runMain backend.MainClusterManager 2551 backend")
 
-addCommandAlias("sj", "runMain backend.journal.SharedJournalApp 2552 shared-journal -Dakka.remote.netty.tcp.port=2552 -Dakka.cluster.roles.0=journal")
+addCommandAlias("sj", "runMain backend.journal.SharedJournalApp 2552 shared-journal")

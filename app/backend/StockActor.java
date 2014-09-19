@@ -1,9 +1,16 @@
 package backend;
 
+import akka.actor.ActorIdentity;
 import akka.actor.ActorRef;
 import akka.actor.Cancellable;
+import akka.dispatch.*;
 import akka.japi.pf.ReceiveBuilder;
+import akka.pattern.Patterns;
+import akka.pattern.Patterns$;
 import akka.persistence.AbstractPersistentActor;
+import akka.persistence.RecoveryCompleted;
+import akka.persistence.SnapshotOffer;
+import akka.util.Timeout;
 import models.Stock;
 import scala.PartialFunction;
 import scala.concurrent.duration.Duration;
@@ -11,10 +18,15 @@ import scala.runtime.BoxedUnit;
 import utils.FakeStockQuote;
 import utils.StockQuote;
 
+import java.io.Serializable;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import static akka.pattern.Patterns.ask;
+import akka.actor.Identify;
+
 
 /**
  * There is one StockActor per stock symbol.  The StockActor maintains a list of users watching the stock and the stock
@@ -22,9 +34,9 @@ import java.util.concurrent.TimeUnit;
  */
 public class StockActor extends AbstractPersistentActor {
 
-    final HashSet<ActorRef> watchers = new HashSet<ActorRef>();
+    private Set<ActorRef> watchers = new HashSet<>();
 
-    final Deque<Double> stockHistory = FakeStockQuote.history(50);
+    private Deque<Double> stockHistory = FakeStockQuote.history(50);
 
     private String symbol;
     private StockQuote stockQuote;
@@ -46,67 +58,160 @@ public class StockActor extends AbstractPersistentActor {
                 self(), Stock.latest, context().dispatcher(), null);
     }
 
+    private Cancellable snapshotTick() {
+        return context().system().scheduler().schedule(
+                Duration.Zero(), Duration.create(5, TimeUnit.MINUTES),
+                self(), Events.snap, context().dispatcher(), null);
+    }
+
     @Override
     public PartialFunction<Object, BoxedUnit> receiveRecover() {
-        return ReceiveBuilder.match(Stock.Watch.class, watch -> {
-            // reply with the stock history, and add the sender as a watcher
-            sender().tell(new Stock.History(symbol, stockHistory), self());
-            watchers.add(sender());
-        }).build();
+        System.out.println(">>>>>>>>>>>> ");
+        System.out.println(">>>>>>>>>>>> Running receiveRecover " + symbol);
+        System.out.println(">>>>>>>>>>>> ");
+
+        return ReceiveBuilder
+                .match(Events.StockPriceUpdated.class, this::updateHistory)
+                .match(Events.WatcherAdded.class, r -> addWatcherIfAlive(r.watcher()))
+                .match(Events.WatcherRemoved.class, this::removeWatcher)
+                .match(SnapshotOffer.class, this::updateState)
+                .build();
     }
+
+
+
 
     @Override
     public PartialFunction<Object, BoxedUnit> receiveCommand() {
 
         Optional<Cancellable> stockTick = tick ? Optional.of(scheduleTick()) : Optional.empty();
-        PartialFunction<Object, BoxedUnit> build = getObjectBoxedUnitPartialFunction(stockTick);
-        return build;
-    }
+        Cancellable snapShotTick = snapshotTick();
 
-    private PartialFunction<Object, BoxedUnit> getObjectBoxedUnitPartialFunction(Optional<Cancellable> stockTick) {
         return ReceiveBuilder
                 .match(Stock.Latest.class, latest -> {
-                    // add a new stock price to the history and drop the oldest
                     Double newPrice = stockQuote.newPrice(stockHistory.peekLast());
-                    stockHistory.add(newPrice);
-                    stockHistory.remove();
-                    // notify watchers
-                    watchers.forEach(watcher -> watcher.tell(new Stock.Update(symbol, newPrice), self()));
+                    //too many persistence messages. Maybe its good idea to capture that as a snapshot
+//                    persist(new Events.StockPriceUpdated(newPrice), evt -> {
+//                        updateHistory(evt);
+                        // notify watchers
+                        watchers.forEach(watcher -> watcher.tell(new Stock.Update(symbol, newPrice), self()));
+//                    });
                 })
                 .match(Stock.Watch.class, watch -> {
-                    // reply with the stock history, and add the sender as a watcher
-                    sender().tell(new Stock.History(symbol, stockHistory), self());
-                    watchers.add(sender());
+                    persist(new Events.WatcherAdded(sender()), evt -> {
+                        addWatcher(evt);
+                        // reply with the stock history, and add the sender as a watcher
+                        evt.watcher().tell(new Stock.History(symbol, stockHistory), self());
+                    });
                 })
                 .match(Stock.Unwatch.class, unwatch -> {
-                    watchers.remove(sender());
-                    if (watchers.isEmpty()) {
-                        stockTick.ifPresent(Cancellable::cancel);
-                        context().stop(self());
-                    }
-                }).build();
+                    persist(new Events.WatcherRemoved(sender()), evt -> {
+                        removeWatcher(evt);
+                        if (watchers.isEmpty()) {
+                            stockTick.ifPresent(Cancellable::cancel);
+                            snapShotTick.cancel();
+                            context().stop(self());
+                        }
+
+                    });
+                })
+                .match(Events.Snap.class, s -> {
+                    saveSnapshot(new Events.TakeSnapshot(stockHistory, watchers));
+                })
+                .build();
     }
 
-    public static class Get {
-        final public String symbol;
 
-        public Get(String symbol) {
-            this.symbol = symbol;
+    private void updateState(SnapshotOffer offer) {
+        Events.TakeSnapshot snapshot = (Events.TakeSnapshot)offer.snapshot();
+        stockHistory = snapshot.history;
+        for(ActorRef w : snapshot.watchers) {
+           addWatcherIfAlive(w);
         }
     }
 
-    public static class EntryEnvelope {
-        final public long id;
-        final public Object payload;
+    private void updateHistory(Events.StockPriceUpdated evt) {
+        stockHistory.add(evt.price());
+        stockHistory.remove();
+    }
 
-        public EntryEnvelope(long id, Object payload) {
-            this.id = id;
-            this.payload = payload;
+    private void addWatcher(Events.WatcherAdded evt) {
+        watchers.add(evt.watcher());
+    }
+
+    private void addWatcherIfAlive(ActorRef w) {
+        //using actor identity to make sure the watcher is still alive after recovery
+        //TODO: we could also extract this out into a separate actor
+        Patterns.ask(w, new Identify(w.path().name()), 100)
+           .map(new Mapper<Object, Void>() {
+               @Override
+               public Void apply(Object result) {
+                  watchers.add(w);
+                  return null;
+               }
+           }, context().dispatcher())
+          .recover(new Recover<Void>() {
+              public Void recover(Throwable failure) {
+                  self().tell(new Stock.Unwatch(Optional.of(symbol)), w);
+                  return null;
+              }
+          }, context().dispatcher());
+    }
+
+    private void removeWatcher(Events.WatcherRemoved evt) {
+        watchers.remove(evt.watcher());
+    }
+
+    public static class Events {
+
+        public static Snap snap = new Snap();
+
+        public static class StockPriceUpdated implements Serializable {
+            private static final long serialVersionUID = 101L;
+
+            final private Double price;
+            public StockPriceUpdated(Double newPrice) { this.price = newPrice; }
+
+            public Double price() { return price; }
         }
+
+        public static class WatcherAdded implements Serializable {
+            private static final long serialVersionUID = 202L;
+            final private ActorRef watcher;
+            public WatcherAdded(ActorRef watcher) { this.watcher = watcher; }
+
+            public ActorRef watcher() { return watcher; }
+        }
+
+        public static class WatcherRemoved implements Serializable  {
+            private static final long serialVersionUID = 303L;
+            final private ActorRef watcher;
+            public WatcherRemoved(ActorRef watcher) { this.watcher = watcher; }
+
+            public ActorRef watcher() { return watcher; }
+        }
+
+        public static class TakeSnapshot implements Serializable {
+            private static final long serialVersionUID = 404L;
+
+            private Deque<Double> history;
+            private Set<ActorRef> watchers;
+
+            public TakeSnapshot(Deque<Double> history, Set<ActorRef> watchers) {
+              this.history = history;
+              this.watchers = watchers;
+            }
+
+            public Deque<Double> history() { return history; }
+
+            public Set<ActorRef> watchers() { return watchers; }
+        }
+
+        public static class Snap {}
     }
 
     @Override
     public String persistenceId() {
-        return getSelf().path().parent().parent().name() + "-" + getSelf().path().name();
+        return "symbol_" + symbol;
     }
 }
