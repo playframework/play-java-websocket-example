@@ -33,9 +33,7 @@ public class FunctionalTest {
 
                 try {
                     String serverURL = "ws://localhost:37117/ws";
-                    WebSocketClient.LoggingListener listener = new WebSocketClient.LoggingListener(message -> {
-                        // System.out.println(message);
-                    });
+                    WebSocketClient.LoggingListener listener = new WebSocketClient.LoggingListener(message -> {});
                     CompletableFuture<WebSocket> completionStage = webSocketClient.call(serverURL, listener);
                     await().until(completionStage::isDone);
                     assertThat(completionStage)
