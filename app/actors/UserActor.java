@@ -138,9 +138,7 @@ public class UserActor extends AbstractActor {
         // Set up a flow that will let us pull out a killswitch for this specific stock,
         // and automatic cleanup for very slow subscribers (where the browser has crashed, etc).
         final Flow<JsonNode, JsonNode, UniqueKillSwitch> killswitchFlow = Flow.of(JsonNode.class)
-                .joinMat(KillSwitches.singleBidi(), Keep.right())
-                .backpressureTimeout(Duration.create(1, TimeUnit.SECONDS));
-
+                .joinMat(KillSwitches.singleBidi(), Keep.right());
         // Set up a complete runnable graph from the stock source to the hub's sink
         String name = "stock-" + stock.symbol + "-" + id;
         final RunnableGraph<UniqueKillSwitch> graph = stockSource
